@@ -1,88 +1,88 @@
-# backtest.py — Backtest simple de la estrategia actual
-import time
+# backtest.py — Backtest de la estrategia actual
 import pandas as pd
 import ccxt
 from datetime import datetime, timedelta
-
 import config
 from strategy import Strategy
-from data_hub import DataHub   # Usamos el mismo DataHub
 
-print("🚀 Iniciando Backtest de la estrategia...")
+print("🚀 Iniciando Backtest...\n")
 
 # =============================================
-# CONFIGURACIÓN DEL BACKTEST
+# CONFIGURACIÓN
 # =============================================
-SYMBOL = "BTC/USDT:USDT"
+SYMBOL = "BTC/USDT"
 TIMEFRAME = "5m"
-DAYS_BACK = 30                    # Últimos 30 días
-INITIAL_BALANCE = 1000.0          # Capital inicial ficticio (USDT)
+DAYS_BACK = 30                    # Puedes cambiar a 7, 14, 60, etc.
+INITIAL_BALANCE = 1000.0
 
 # =============================================
-# CONEXIÓN PARA DATOS HISTÓRICOS
+# DESCARGAR DATOS HISTÓRICOS
 # =============================================
 exchange = ccxt.binance({
     'enableRateLimit': True,
-    'options': {'defaultType': 'future'}
 })
 
-print(f"Descargando datos históricos de {DAYS_BACK} días ({TIMEFRAME})...")
+print(f"Descargando {DAYS_BACK} días de velas {TIMEFRAME}...")
 
 since = int((datetime.now() - timedelta(days=DAYS_BACK)).timestamp() * 1000)
-ohlcv = exchange.fetch_ohlcv(SYMBOL, TIMEFRAME, since=since, limit=1000)
+ohlcv = exchange.fetch_ohlcv(SYMBOL, TIMEFRAME, since=since, limit=1500)
 
 df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
 df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
 df.set_index('timestamp', inplace=True)
 
-print(f"✅ Datos cargados: {len(df)} velas desde {df.index[0]} hasta {df.index[-1]}")
+print(f"✅ Datos cargados: {len(df)} velas")
+print(f"Desde: {df.index[0]} hasta {df.index[-1]}\n")
 
 # =============================================
 # INICIALIZACIÓN
 # =============================================
 strategy = Strategy()
 trades = []
-equity_curve = [INITIAL_BALANCE]
+balance = INITIAL_BALANCE
 position = None
 entry_price = 0
-balance = INITIAL_BALANCE
+equity = [INITIAL_BALANCE]
 
-print("\nEjecutando backtest...\n")
+print("Ejecutando backtest...\n")
 
-for i in range(config.EMA_SLOW_PERIOD + 10, len(df)):
-    # Tomamos solo las velas hasta el momento actual del bucle
+for i in range(50, len(df)):        # Empezamos después de tener suficientes velas
     current_candles = {"5m": df.iloc[:i+1].reset_index()}
-    
-    # Simulamos order book con el precio actual (aproximación)
     current_price = float(df['close'].iloc[i])
-    fake_order_book = {"imbalance": 0.55}  # valor neutro, la estrategia usará principalmente EMAs
 
-    signal = strategy.analyze(current_candles, fake_order_book)
+    # Simulación simple de order book
+    fake_ob = {"imbalance": 0.55}
 
-    # Si no hay posición y hay señal válida → abrimos
+    signal = strategy.analyze(current_candles, fake_ob)
+
+    # Abrir posición
     if position is None and signal["valid"]:
         position = signal["direction"]
         entry_price = current_price
-        size = (balance * config.RISK_PER_TRADE) / (entry_price * 0.003)   # riesgo 0.5%
-        print(f"📍 [{df.index[i]}] ABRIMOS {position} @ {current_price:,.2f}")
+        risk_amount = balance * config.RISK_PER_TRADE
+        size = risk_amount / (entry_price * config.STOP_LOSS_PCT)   # tamaño según riesgo
+        print(f"📍 [{df.index[i].strftime('%Y-%m-%d %H:%M')}] ABRIMOS {position} @ {current_price:,.2f}")
 
-    # Si tenemos posición → verificamos salida (simple: cierre por señal contraria o final)
+    # Cerrar posición
     elif position is not None:
-        # Salida simple: señal contraria o fin del backtest
+        should_close = False
         if (position == "LONG" and signal["direction"] == "SHORT") or \
-           (position == "SHORT" and signal["direction"] == "LONG") or \
-           (i == len(df)-1):
+           (position == "SHORT" and signal["direction"] == "LONG"):
+            should_close = True
+        elif i == len(df)-1:   # Última vela
+            should_close = True
 
+        if should_close:
             exit_price = current_price
-            pnl_pct = (exit_price - entry_price) / entry_price if position == "LONG" else (entry_price - exit_price) / entry_price
-            pnl_usdt = balance * config.RISK_PER_TRADE * (pnl_pct / 0.003)   # según riesgo
+            pnl_pct = (exit_price - entry_price)/entry_price if position == "LONG" else (entry_price - exit_price)/entry_price
+            pnl_usdt = balance * config.RISK_PER_TRADE * (pnl_pct / config.STOP_LOSS_PCT)
 
             balance += pnl_usdt
-            equity_curve.append(balance)
+            equity.append(balance)
 
             win = pnl_usdt > 0
             trades.append({
-                "entry_time": df.index[i - (i % 10)],  # aproximación
+                "time": df.index[i],
                 "direction": position,
                 "entry": entry_price,
                 "exit": exit_price,
@@ -90,31 +90,29 @@ for i in range(config.EMA_SLOW_PERIOD + 10, len(df)):
                 "win": win
             })
 
-            print(f"✅ [{df.index[i]}] CERRAMOS {position} | PnL: {pnl_usdt:+.2f} USDT")
-
+            print(f"✅ CERRAMOS {position} @ {exit_price:,.2f} | PnL: {pnl_usdt:+.2f} USDT")
             position = None
 
 # =============================================
-# RESULTADOS FINALES
+# RESULTADOS
 # =============================================
-print("\n" + "="*70)
+print("\n" + "="*75)
 print("📊 RESULTADOS DEL BACKTEST")
-print("="*70)
-print(f"Período: {df.index[0].date()} → {df.index[-1].date()}")
-print(f"Capital inicial : {INITIAL_BALANCE:,.2f} USDT")
-print(f"Capital final   : {balance:,.2f} USDT")
-print(f"Beneficio neto  : {balance - INITIAL_BALANCE:+.2f} USDT ({(balance/INITIAL_BALANCE-1)*100:+.1f}%)")
+print("="*75)
+print(f"Período analizado     : {df.index[0].date()}  →  {df.index[-1].date()}")
+print(f"Capital inicial       : {INITIAL_BALANCE:,.2f} USDT")
+print(f"Capital final         : {balance:,.2f} USDT")
+print(f"Beneficio neto        : {balance - INITIAL_BALANCE:+.2f} USDT ({((balance/INITIAL_BALANCE)-1)*100:+.1f}%)")
 
 if trades:
     df_trades = pd.DataFrame(trades)
-    winrate = (df_trades['win'].mean() * 100)
-    total_trades = len(df_trades)
-    wins = df_trades['win'].sum()
-    print(f"\nOperaciones     : {total_trades}")
-    print(f"Winrate         : {winrate:.1f}% ({wins}/{total_trades})")
-    print(f"Mejor trade     : {df_trades['pnl_usdt'].max():+.2f} USDT")
-    print(f"Peor trade      : {df_trades['pnl_usdt'].min():+.2f} USDT")
+    winrate = df_trades['win'].mean() * 100
+    print(f"\nTotal operaciones     : {len(trades)}")
+    print(f"Winrate               : {winrate:.1f}%")
+    print(f"Ganancia promedio     : {df_trades['pnl_usdt'].mean():+.2f} USDT")
+    print(f"Mejor operación       : {df_trades['pnl_usdt'].max():+.2f} USDT")
+    print(f"Peor operación        : {df_trades['pnl_usdt'].min():+.2f} USDT")
 else:
-    print("\nNo se generaron operaciones en este período.")
+    print("\nNo se generaron operaciones durante el período.")
 
-print("\n✅ Backtest finalizado. Revisa los resultados arriba.")
+print("\n✅ Backtest finalizado.")
