@@ -1,6 +1,6 @@
-# exchange_connector.py — Versión compatible 2026
+# exchange_connector.py — Bybit Testnet (versión estable 2026)
 """
-Conexión adaptada a restricciones actuales de Binance Testnet
+Conexión con Bybit Testnet
 """
 
 import logging
@@ -15,40 +15,32 @@ class ExchangeConnector:
     def __init__(self):
         self.exchange = None
         self.is_connected = False
+        self.symbol = "BTC/USDT:USDT"
 
     def connect(self) -> bool:
         try:
-            logger.info("Intentando conexión con Binance Futures...")
+            logger.info("Conectando a Bybit Testnet...")
 
-            self.exchange = ccxt.binance({
+            self.exchange = ccxt.bybit({
                 'apiKey': config.BINANCE_TESTNET_API_KEY,
                 'secret': config.BINANCE_TESTNET_SECRET,
                 'enableRateLimit': True,
                 'options': {
                     'defaultType': 'future',
-                },
-                # Proxies y headers para evitar algunos bloqueos
-                'headers': {
-                    'User-Agent': 'Mozilla/5.0'
                 }
             })
 
-            # Activar modo testnet
-            if config.USE_TESTNET:
-                self.exchange.set_sandbox_mode(True)
+            # Activar Testnet
+            self.exchange.set_sandbox_mode(True)
 
             self.exchange.load_markets()
-            logger.info("✅ Conexión establecida con Binance")
+            logger.info("✅ Conexión exitosa con Bybit Testnet")
 
             self.is_connected = True
             return True
 
         except Exception as e:
             logger.error(f"❌ Error de conexión: {e}")
-            print("\n⚠️  Sugerencias:")
-            print("   1. Usa VPN (con servidor en EE.UU., Singapur o Turquía)")
-            print("   2. Prueba más tarde (a veces el bloqueo es temporal)")
-            print("   3. Considera usar Bybit Testnet como alternativa")
             return False
 
     def get_exchange(self):
@@ -56,9 +48,10 @@ class ExchangeConnector:
 
     def get_open_positions(self):
         try:
-            positions = self.exchange.fetch_positions()
-            return [p for p in positions if float(p.get('contracts', 0)) > 0]
-        except:
+            positions = self.exchange.fetch_positions([self.symbol])
+            return [p for p in positions if float(p.get('contracts', 0) or 0) > 0]
+        except Exception as e:
+            logger.warning(f"No se pudieron obtener posiciones: {e}")
             return []
 
     def get_balance(self):
@@ -70,7 +63,7 @@ class ExchangeConnector:
                 "available_usdt": float(usdt.get('free', 0))
             }
         except:
-            return {"total_usdt": 1000, "available_usdt": 1000}
+            return {"total_usdt": 10000, "available_usdt": 10000}
 
     def open_position(self, side: str, quantity: float):
         logger.info(f"[SIMULADO] Abrir {side.upper()} {quantity:.6f} BTC")
