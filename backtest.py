@@ -1,23 +1,23 @@
-# backtest.py — Versión más activa (más operaciones)
+# backtest.py — Versión Equilibrada y Más Realista
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import config
 from strategy import Strategy
 
-print("🚀 Iniciando Backtest MÁS ACTIVO...\n")
+print("🚀 Backtest Versión Equilibrada (Mejor Calidad de Señales)\n")
 
-# ========================= CONFIGURACIÓN =========================
+# ========================= CONFIG =========================
 DIAS = 30
 CAPITAL_INICIAL = 1000.0
 
-# ========================= DATOS SIMULADOS =========================
+# ========================= DATOS =========================
 np.random.seed(42)
 dates = pd.date_range(end=datetime.now(), periods=DIAS*288, freq='5min')
 
 base_price = 76500
-trend = np.linspace(0, 4500, len(dates)) 
-noise = np.random.normal(0, 950, len(dates))
+trend = np.linspace(0, 5000, len(dates))
+noise = np.random.normal(0, 900, len(dates))
 price = base_price + trend + noise
 
 df = pd.DataFrame({
@@ -26,61 +26,47 @@ df = pd.DataFrame({
     'high': price * (1 + np.abs(np.random.normal(0, 0.004, len(dates)))),
     'low': price * (1 - np.abs(np.random.normal(0, 0.004, len(dates)))),
     'close': price,
-    'volume': np.random.lognormal(10, 1.1, len(dates))
+    'volume': np.random.lognormal(10, 1, len(dates))
 })
 df.set_index('timestamp', inplace=True)
 
-print(f"✅ Datos simulados: {len(df):,} velas\n")
+print(f"✅ {len(df):,} velas generadas\n")
 
 # ========================= BACKTEST =========================
 strategy = Strategy()
 trades = []
 balance = CAPITAL_INICIAL
 position = None
-entry_price = 0
 
-print("Ejecutando backtest (versión más activa)...\n")
+print("Ejecutando backtest equilibrado...\n")
 
-for i in range(50, len(df)):
+for i in range(100, len(df)):
     current_candles = {"5m": df.iloc[:i+1].reset_index()}
     current_price = float(df['close'].iloc[i])
 
-    # Order Book más variable (más realista)
-    fake_ob = {"imbalance": np.random.uniform(0.40, 0.80)}
+    fake_ob = {"imbalance": np.random.uniform(0.48, 0.82)}
 
     signal = strategy.analyze(current_candles, fake_ob)
 
-    # === ABRIR ===
     if position is None and signal["valid"]:
         position = signal["direction"]
         entry_price = current_price
-        print(f"📍 [{df.index[i].strftime('%m-%d %H:%M')}] ABRIMOS {position} @ {current_price:,.1f} | Razón: {signal['reason']}")
+        print(f"📍 [{df.index[i].strftime('%m-%d %H:%M')}] ABRIMOS {position} @ {current_price:,.1f} | {signal['reason']}")
 
-    # === CERRAR ===
     elif position is not None:
         should_close = False
-        
-        # Cierre por señal contraria
         if (position == "LONG" and signal["direction"] == "SHORT") or \
            (position == "SHORT" and signal["direction"] == "LONG"):
             should_close = True
-        
-        # Cierre por take profit / stop loss aproximado
-        if position == "LONG":
-            if current_price >= entry_price * 1.008:   # +0.8%
-                should_close = True
-            elif current_price <= entry_price * 0.996: # -0.4%
-                should_close = True
-        else:  # SHORT
-            if current_price <= entry_price * 0.992:
-                should_close = True
-            elif current_price >= entry_price * 1.004:
-                should_close = True
+        elif position == "LONG" and current_price >= entry_price * 1.012:   # +1.2%
+            should_close = True
+        elif position == "SHORT" and current_price <= entry_price * 0.988: # -1.2%
+            should_close = True
 
         if should_close or i == len(df)-1:
             exit_price = current_price
             pnl_pct = (exit_price - entry_price) / entry_price if position == "LONG" else (entry_price - exit_price) / entry_price
-            pnl_usdt = balance * config.RISK_PER_TRADE * (pnl_pct / config.STOP_LOSS_PCT * 1.5)
+            pnl_usdt = balance * config.RISK_PER_TRADE * (pnl_pct / config.STOP_LOSS_PCT * 2)
 
             balance += pnl_usdt
 
@@ -98,7 +84,7 @@ for i in range(50, len(df)):
 
 # ========================= RESULTADOS =========================
 print("\n" + "="*85)
-print("📊 RESULTADOS DEL BACKTEST (VERSIÓN ACTIVA)")
+print("📊 RESULTADOS DEL BACKTEST EQUILIBRADO")
 print("="*85)
 print(f"Capital inicial : ${CAPITAL_INICIAL:,.2f}")
 print(f"Capital final   : ${balance:,.2f}")
