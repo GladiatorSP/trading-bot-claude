@@ -27,14 +27,14 @@ TAKE_PROFIT_PCT: float = 0.006     # 0.6%
 
 # ==================== PARÁMETROS TÉCNICOS ====================
 ORDER_BOOK_DEPTH: int = 20
-ORDER_BOOK_IMBALANCE_THRESHOLD: float = 0.55
+ORDER_BOOK_IMBALANCE_THRESHOLD: float = 0.65
 
 EMA_FAST_PERIOD: int = 9
 EMA_SLOW_PERIOD: int = 21
 ATR_PERIOD: int = 14
 
-ATR_MIN_MULTIPLIER: float = 0.3
-ATR_MAX_MULTIPLIER: float = 4.0
+ATR_MIN_MULTIPLIER: float = 0.8
+ATR_MAX_MULTIPLIER: float = 3.0
 
 # Timeframes
 TIMEFRAMES: list = ["1m", "5m", "15m"]
