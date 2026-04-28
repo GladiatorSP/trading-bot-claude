@@ -12,7 +12,7 @@ print("🚀 Iniciando Backtest...\n")
 # =============================================
 SYMBOL = "BTC/USDT"
 TIMEFRAME = "5m"
-DAYS_BACK = 30                    # Puedes cambiar a 7, 14, 60, etc.
+DAYS_BACK = 600                    # Puedes cambiar a 7, 14, 60, etc.
 INITIAL_BALANCE = 1000.0
 
 # =============================================
